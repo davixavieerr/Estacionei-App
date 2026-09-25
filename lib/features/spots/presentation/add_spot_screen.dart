@@ -40,27 +40,97 @@ class _AddSpotScreenState extends State<AddSpotScreen> {
   LatLng? _selectedLocation;
 
   Future<LatLng> _geocodeAddress(String address) async {
+    final clean = address.replaceAll(RegExp(r'[nN][ºoO]?\s*'), '').trim();
+    final query = Uri.encodeComponent('$clean, São Paulo, SP, Brasil');
+
+    // 1. Google Maps Geocoding API oficial
     try {
-      final clean = address.replaceAll(RegExp(r'[nN][ºoO]?\s*'), '');
-      final query = Uri.encodeComponent('$clean, São Paulo - SP, Brasil');
-      final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1');
+      const apiKey = 'AIzaSyAiRnYGDzYtvKRaTsR6O6EaekbpkEgGn3Y';
+      final gUrl = Uri.parse(
+          'https://maps.googleapis.com/maps/api/geocode/json?address=$query&key=$apiKey');
+      final gRes = await http.get(gUrl);
+      if (gRes.statusCode == 200) {
+        final gData = jsonDecode(gRes.body);
+        if (gData['status'] == 'OK' && (gData['results'] as List).isNotEmpty) {
+          final loc = gData['results'][0]['geometry']['location'];
+          final lat = (loc['lat'] as num).toDouble();
+          final lng = (loc['lng'] as num).toDouble();
+          return LatLng(lat, lng);
+        }
+      }
+    } catch (_) {}
 
-      final response = await http.get(url, headers: {'User-Agent': 'EstacioneiApp/1.0'});
-
-      if (response.statusCode == 200) {
-        final List data = jsonDecode(response.body);
-        if (data.isNotEmpty) {
-          final lat = double.parse(data[0]['lat']);
-          final lon = double.parse(data[0]['lon']);
+    // 2. OpenStreetMap / Nominatim (sem cabeçalho restrito de navegador)
+    try {
+      final nUrl = Uri.parse(
+          'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1');
+      final nRes = await http.get(nUrl);
+      if (nRes.statusCode == 200) {
+        final List nData = jsonDecode(nRes.body);
+        if (nData.isNotEmpty) {
+          final lat = double.parse(nData[0]['lat'].toString());
+          final lon = double.parse(nData[0]['lon'].toString());
           return LatLng(lat, lon);
         }
       }
     } catch (_) {}
 
+    // 3. Photon Geocoder (CORS nativo)
+    try {
+      final pUrl = Uri.parse('https://photon.komoot.io/api/?q=$query&limit=1');
+      final pRes = await http.get(pUrl);
+      if (pRes.statusCode == 200) {
+        final pData = jsonDecode(pRes.body);
+        final features = pData['features'] as List?;
+        if (features != null && features.isNotEmpty) {
+          final coords = features[0]['geometry']['coordinates'] as List;
+          return LatLng(
+              (coords[1] as num).toDouble(), (coords[0] as num).toDouble());
+        }
+      }
+    } catch (_) {}
+
+    // 4. Mapeamento Inteligente por Regiões de SP (Fallback Offline)
     final lower = address.toLowerCase();
-    if (lower.contains('oscar porto') || lower.contains('tutoia') || lower.contains('paraiso')) {
+    if (lower.contains('oscar porto') ||
+        lower.contains('tutoia') ||
+        lower.contains('tutóia') ||
+        lower.contains('paraiso') ||
+        lower.contains('paraíso')) {
       return const LatLng(-23.5732, -46.6508);
     }
+    if (lower.contains('jardim') ||
+        lower.contains('jardins') ||
+        lower.contains('oscar freire') ||
+        lower.contains('augusta') ||
+        lower.contains('cerqueira')) {
+      return const LatLng(-23.5641, -46.6695);
+    }
+    if (lower.contains('bela vista') ||
+        lower.contains('cincinato') ||
+        lower.contains('brigadeiro')) {
+      return const LatLng(-23.5684, -46.6478);
+    }
+    if (lower.contains('consolacao') ||
+        lower.contains('consolação') ||
+        lower.contains('reboucas') ||
+        lower.contains('rebouças')) {
+      return const LatLng(-23.5562, -46.6625);
+    }
+    if (lower.contains('pinheiros') || lower.contains('faria lima')) {
+      return const LatLng(-23.5670, -46.6930);
+    }
+    if (lower.contains('itaim') || lower.contains('berrini')) {
+      return const LatLng(-23.5860, -46.6810);
+    }
+    if (lower.contains('vila mariana') ||
+        lower.contains('domingos de morais')) {
+      return const LatLng(-23.5890, -46.6340);
+    }
+    if (lower.contains('moema') || lower.contains('ibirapuera')) {
+      return const LatLng(-23.5980, -46.6620);
+    }
+
     return const LatLng(-23.5614, -46.6558);
   }
 
